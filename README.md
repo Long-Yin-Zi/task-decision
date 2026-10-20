@@ -61,13 +61,11 @@ dsh plugin --profile desktop add github:Long-Yin-Zi/task-decision
 
 ## 截图
 
-> 建议放 1~2 张（面板展开 / 提交后收起）。
->
-> ```markdown
-> ![面板](docs/screenshot-panel.png)
-> ```
+![面板展开：本轮摘要 + 待拍板问题](docs/screenshot-panel.png)
 
-*(仓库里暂未附带截图；你把图片放到 `docs/` 并把上面这行取消注释即可。)*
+> 右侧边栏里的完整面板：上方是「本轮摘要」，下方是「待拍板问题」逐题卡片。
+> 每题可以选选项、写整题备注、粘贴截图或文件（Ctrl+V / 「添加附件」），
+> 底部「提交拍板」固定在底栏，选好后一提交就把结构化回传发回当前会话。
 
 ---
 
