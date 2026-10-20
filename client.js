@@ -87,7 +87,7 @@ window.__ModuleLoader__.load({
       attachUnavailable: '当前 DSH 未提供附件上传服务',
       // ⭐【0.6.2】取消本轮
       cancel: '取消本轮',
-      cancelConfirm: '再点一次取消',
+      cancelConfirm: '确认取消',
       cancelledTitle: '本轮待拍板已取消',
       cancelledHint: '这些决策暂时不用处理了；AI 下一轮登记新问题时，这里会自动恢复。',
     };
@@ -139,7 +139,7 @@ window.__ModuleLoader__.load({
       attachWait: 'Attachments are still being processed — try again in a moment',
       attachUnavailable: 'This DSH build does not provide attachment upload',
       cancel: 'Skip this round',
-      cancelConfirm: 'Click again to skip',
+      cancelConfirm: 'Confirm skip',
       cancelledTitle: 'This round was skipped',
       cancelledHint: 'These decisions are no longer pending. A new gate will bring this panel back.',
     };
@@ -980,22 +980,23 @@ window.__ModuleLoader__.load({
               h('span', { className: 'wg-status-text' },
                 incomplete ? t.needPick
                   : (phase === 'sending' ? t.sending : (total ? t.footHint : ''))),
-              // ⭐【0.6.2】取消本轮：两步确认，避免误点把一整轮问题丢掉
-              h('button', {
-                className: 'wg-cancel' + (cancelArmed ? ' wg-cancel-armed' : ''),
-                disabled: phase === 'sending',
-                title: cancelArmed ? t.cancelConfirm : t.cancel,
-                onClick: () => {
-                  if (!cancelArmed) { setCancelArmed(true); return; }
-                  setCancelArmed(false);
-                  if (typeof cancel === 'function') cancel(sessionId);
-                },
-              }, cancelArmed ? t.cancelConfirm : t.cancel)),
-          readonly ? null : h('button', {
-            className: 'wg-primary',
-            disabled: phase === 'sending',
-            onClick: onSend,
-          }, phase === 'sending' ? t.sending : (phase === 'error' ? t.retrySend : t.submit))));
+          // ⭐【0.6.3】提交与取消同一排各占一半：取消不再是难找的小灰字
+          readonly ? null : h('div', { className: 'wg-actions' },
+            h('button', {
+              className: 'wg-primary',
+              disabled: phase === 'sending',
+              onClick: onSend,
+            }, phase === 'sending' ? t.sending : (phase === 'error' ? t.retrySend : t.submit)),
+            h('button', {
+              className: 'wg-cancel' + (cancelArmed ? ' wg-cancel-armed' : ''),
+              disabled: phase === 'sending',
+              title: cancelArmed ? t.cancelConfirm : t.cancel,
+              onClick: () => {
+                if (!cancelArmed) { setCancelArmed(true); return; }
+                setCancelArmed(false);
+                if (typeof cancel === 'function') cancel(sessionId);
+              },
+            }, cancelArmed ? t.cancelConfirm : t.cancel))));
     }
 
     /**
@@ -1319,15 +1320,18 @@ window.__ModuleLoader__.load({
 .wg-attach-list-readonly{margin-top:8px}
 .wg-file-input{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
 
-/* 22 · 取消本轮（底栏状态行右侧的文字按钮，两步确认） */
-.wg-cancel{flex:0 0 auto;margin-left:8px;padding:2px 0;border:0;background:none;cursor:pointer;
-  font:inherit;font-size:11.5px;line-height:16px;color:var(--wg-text-3);
-  text-decoration:underline;text-underline-offset:2px;
-  text-decoration-color:color-mix(in srgb,var(--wg-text-3) 40%,transparent)}
-.wg-cancel:hover{color:var(--wg-text)}
-.wg-cancel-armed{color:var(--wg-bad);font-weight:600;text-decoration-color:currentColor}
+/* 22 · 提交 / 取消：同一排各占一半 */
+.wg-actions{display:flex;align-items:center;gap:8px}
+.wg-actions > .wg-primary{flex:1 1 0;width:auto;min-width:0}
+.wg-cancel{flex:1 1 0;min-width:0;height:36px;padding:0 10px;border-radius:8px;cursor:pointer;
+  border:1px solid var(--wg-line-2);background:transparent;color:var(--wg-text-2);
+  font:inherit;font-size:13px;font-weight:600;line-height:1;white-space:nowrap;
+  transition:background-color 140ms ease-out,border-color 140ms ease-out,color 140ms ease-out}
+.wg-cancel:hover:not(:disabled){background:var(--wg-hover);border-color:var(--wg-text-3);color:var(--wg-text)}
+.wg-cancel-armed,.wg-cancel-armed:hover:not(:disabled){border-color:var(--wg-bad);color:var(--wg-bad);
+  background:color-mix(in srgb,var(--wg-bad) 8%,transparent)}
 .wg-cancel:disabled{opacity:.5;cursor:default}
-.wg-cancel:focus-visible{outline:2px solid var(--wg-brand);outline-offset:2px;border-radius:3px}
+.wg-cancel:focus-visible{outline:2px solid var(--wg-brand);outline-offset:2px}
 
 /* 12 · 提交中冻结 */
 .wg-wrap[data-phase="sending"] .wg-opt{pointer-events:none}

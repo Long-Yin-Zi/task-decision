@@ -1,6 +1,6 @@
 {
   "name": "task-decision",
-  "version": "0.6.2",
+  "version": "0.6.3",
   "type": "module",
   "description": "本轮工作 & 待拍板：把 AI 每轮回复里的待决问题收集到右侧边栏，一次性选完、写备注、提交回会话",
   "keywords": [
