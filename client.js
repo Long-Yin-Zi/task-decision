@@ -1322,7 +1322,8 @@ window.__ModuleLoader__.load({
 
 /* 22 · 提交 / 取消：同一排各占一半 */
 .wg-actions{display:flex;align-items:center;gap:8px}
-.wg-actions > .wg-primary{flex:1 1 0;width:auto;min-width:0}
+/* 提交占 2/3、取消占 1/3（用户定的比例） */
+.wg-actions > .wg-primary{flex:2 1 0;width:auto;min-width:0}
 .wg-cancel{flex:1 1 0;min-width:0;height:36px;padding:0 10px;border-radius:8px;cursor:pointer;
   border:1px solid var(--wg-line-2);background:transparent;color:var(--wg-text-2);
   font:inherit;font-size:13px;font-weight:600;line-height:1;white-space:nowrap;
