@@ -85,6 +85,11 @@ window.__ModuleLoader__.load({
       attachRemove: '移除这个附件',
       attachWait: '还有附件没处理完，稍等再提交',
       attachUnavailable: '当前 DSH 未提供附件上传服务',
+      // ⭐【0.6.2】取消本轮
+      cancel: '取消本轮',
+      cancelConfirm: '再点一次取消',
+      cancelledTitle: '本轮待拍板已取消',
+      cancelledHint: '这些决策暂时不用处理了；AI 下一轮登记新问题时，这里会自动恢复。',
     };
     const en = {
       tab: 'Work Summary & Gate',
@@ -133,6 +138,10 @@ window.__ModuleLoader__.load({
       attachRemove: 'Remove this attachment',
       attachWait: 'Attachments are still being processed — try again in a moment',
       attachUnavailable: 'This DSH build does not provide attachment upload',
+      cancel: 'Skip this round',
+      cancelConfirm: 'Click again to skip',
+      cancelledTitle: 'This round was skipped',
+      cancelledHint: 'These decisions are no longer pending. A new gate will bring this panel back.',
     };
 
     // ------------------------------------------------------------------
@@ -245,6 +254,18 @@ window.__ModuleLoader__.load({
         submittedKey: row.key,
         submittedSnapshot: snapshot || null,
       }));
+      emit();
+    }
+
+    /**
+     * ⭐【0.6.2】取消本轮：用户可能已经不需要处理这批问题了。
+     *   不删 row（删了面板会退回"加载中"），而是打一个 cancelledKey 标记；
+     *   角标、面板都按这个标记当作"本轮无待办"，新一轮 gate 到达时自动失效。
+     */
+    function cancelGate(sessionId) {
+      const row = gates.get(sessionId);
+      if (!row) return;
+      gates.set(sessionId, Object.assign({}, row, { cancelledKey: row.key }));
       emit();
     }
 
@@ -395,7 +416,7 @@ window.__ModuleLoader__.load({
     // 面板
     // ------------------------------------------------------------------
     function GatePanel(props) {
-      const { t, submit, sessionId, collapse, upload } = props;
+      const { t, submit, sessionId, collapse, upload, cancel } = props;
       const row = useSyncExternalStore(
         subscribe,
         () => gates.get(sessionId) || null,
@@ -403,7 +424,11 @@ window.__ModuleLoader__.load({
       );
       const gate = row ? row.gate : null;
       const submittedRow = !!(row && row.submittedKey && row.submittedKey === row.key);
+      // ⭐【0.6.2】本轮已被用户取消：当成"没有待办"，但保留摘要给他回看
+      const cancelledRow = !!(row && row.cancelledKey && row.cancelledKey === row.key);
       const [picked, setPicked] = useState({});     // { qid: [oid] }
+      // ⭐【0.6.2】取消是两步确认：第一次点只是"上膛"，第二次才真取消
+      const [cancelArmed, setCancelArmed] = useState(false);
       const [notes, setNotes] = useState({});       // { qid: { oid: text } }
       // ⭐【2026-10 新增】每题一个常驻备注 { qid: text }
       //   【为什么必须有】原来的备注只在"选中某个选项"后才出现，
@@ -449,14 +474,32 @@ window.__ModuleLoader__.load({
         setOverall('');
         setPhase('idle');
         setErr('');
+        setCancelArmed(false);
       }, [gateKey]);
 
       if (!gate) {
         return h('div', { className: 'wg-wrap' },
-          h('style', null, CSS_FINAL),
+          STYLE_NODE,
           h('div', { className: 'wg-empty' },
             h('span', { className: 'wg-empty-ico' }),
             h('div', { className: 'wg-loading' }, t.loading)));
+      }
+
+      // ⭐【0.6.2】已取消：只留摘要 + 一条"本轮不用拍板"的说明，底部不出现提交按钮
+      if (cancelledRow) {
+        return h('div', { className: 'wg-wrap' },
+          STYLE_NODE,
+          h('div', { className: 'wg-head' },
+            h('span', { className: 'wg-head-title' }, t.tab)),
+          h('div', { className: 'wg-scroll' },
+            h('section', { className: 'wg-block' },
+              h('div', { className: 'wg-label' }, t.summary),
+              h('div', { className: 'wg-sum', 'data-empty': gate.summary ? 'false' : 'true' },
+                h('div', { className: 'wg-sum-text' }, gate.summary || t.noSummary))),
+            h('div', { className: 'wg-empty' },
+              h('span', { className: 'wg-empty-ico' }),
+              h('div', { className: 'wg-empty-title' }, t.cancelledTitle),
+              h('div', { className: 'wg-empty-hint' }, t.cancelledHint))));
       }
 
       const toggle = (q, oid) => {
@@ -762,7 +805,7 @@ window.__ModuleLoader__.load({
         : (phase === 'error' ? t.sendFail : (incomplete ? t.needPickShort : ''));
 
       return h('div', { className: 'wg-wrap', 'data-phase': phase },
-        h('style', null, CSS_FINAL),
+        STYLE_NODE,
         // ⭐【0.6.0】隐藏的文件选择器：一题一个"添加附件"按钮共用它，
         //   点按钮时先把 qid 记到 filePickTarget，再触发 click。
         h('input', {
@@ -936,13 +979,38 @@ window.__ModuleLoader__.load({
             : h('div', { className: 'wg-status', 'data-tone': incomplete ? 'warn' : undefined },
               h('span', { className: 'wg-status-text' },
                 incomplete ? t.needPick
-                  : (phase === 'sending' ? t.sending : (total ? t.footHint : '')))),
+                  : (phase === 'sending' ? t.sending : (total ? t.footHint : ''))),
+              // ⭐【0.6.2】取消本轮：两步确认，避免误点把一整轮问题丢掉
+              h('button', {
+                className: 'wg-cancel' + (cancelArmed ? ' wg-cancel-armed' : ''),
+                disabled: phase === 'sending',
+                title: cancelArmed ? t.cancelConfirm : t.cancel,
+                onClick: () => {
+                  if (!cancelArmed) { setCancelArmed(true); return; }
+                  setCancelArmed(false);
+                  if (typeof cancel === 'function') cancel(sessionId);
+                },
+              }, cancelArmed ? t.cancelConfirm : t.cancel)),
           readonly ? null : h('button', {
             className: 'wg-primary',
             disabled: phase === 'sending',
             onClick: onSend,
           }, phase === 'sending' ? t.sending : (phase === 'error' ? t.retrySend : t.submit))));
     }
+
+    /**
+     * ⭐【0.6.2】浅比较 memo：宿主侧（滚动、窗口尺寸、会话状态变化）会重新渲染 tab 内容，
+     *   不 memo 的话每次都重建整棵题卡树——题目一多就是肉眼可见的滚动卡顿。
+     *   这里比较的都是 stabilize 过的引用（t 是 Proxy、submit/collapse/upload/cancel 都是闭包常量）。
+     */
+    const GatePanelMemo = typeof React.memo === 'function'
+      ? React.memo(GatePanel, (a, b) => a.t === b.t
+        && a.sessionId === b.sessionId
+        && a.submit === b.submit
+        && a.collapse === b.collapse
+        && a.upload === b.upload
+        && a.cancel === b.cancel)
+      : GatePanel;
 
     // ------------------------------------------------------------------
     // 聊天流里的工具卡片：gate_ask 只显示一行，不把 JSON 摊在聊天里
@@ -966,7 +1034,7 @@ window.__ModuleLoader__.load({
         () => gates.get(sessionId) || null,
         () => gates.get(sessionId) || null,
       );
-      const pending = row && row.submittedKey !== row.key && row.gate
+      const pending = row && row.submittedKey !== row.key && row.cancelledKey !== row.key && row.gate
         ? (Array.isArray(row.gate.questions) ? row.gate.questions.length : 0)
         : 0;
       const submitted = !!(row && row.submittedKey && row.submittedKey === row.key);
@@ -1029,6 +1097,8 @@ window.__ModuleLoader__.load({
   border-left:1.5px solid currentColor;border-bottom:1.5px solid currentColor;transform:rotate(-45deg)}
 .wg-scroll{flex:1 1 auto;min-height:0;overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;
   padding:14px 16px 20px;scrollbar-width:thin;
+  /* ⭐【0.6.2】滚动性能：提前提层 + 限定重绘范围，减少题目多时的首屏卡顿 */
+  will-change:scroll-position;contain:paint;
   scrollbar-color:color-mix(in srgb,var(--wg-text-3) 30%,transparent) transparent}
 .wg-scroll::-webkit-scrollbar{width:10px}
 .wg-scroll::-webkit-scrollbar-thumb{border:3px solid transparent;border-radius:8px;background-clip:content-box;
@@ -1249,12 +1319,26 @@ window.__ModuleLoader__.load({
 .wg-attach-list-readonly{margin-top:8px}
 .wg-file-input{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
 
+/* 22 · 取消本轮（底栏状态行右侧的文字按钮，两步确认） */
+.wg-cancel{flex:0 0 auto;margin-left:8px;padding:2px 0;border:0;background:none;cursor:pointer;
+  font:inherit;font-size:11.5px;line-height:16px;color:var(--wg-text-3);
+  text-decoration:underline;text-underline-offset:2px;
+  text-decoration-color:color-mix(in srgb,var(--wg-text-3) 40%,transparent)}
+.wg-cancel:hover{color:var(--wg-text)}
+.wg-cancel-armed{color:var(--wg-bad);font-weight:600;text-decoration-color:currentColor}
+.wg-cancel:disabled{opacity:.5;cursor:default}
+.wg-cancel:focus-visible{outline:2px solid var(--wg-brand);outline-offset:2px;border-radius:3px}
+
 /* 12 · 提交中冻结 */
 .wg-wrap[data-phase="sending"] .wg-opt{pointer-events:none}
 @media (prefers-reduced-motion: reduce){
   .wg-wrap *{transition-duration:1ms !important;animation:none !important}
 }
 `;
+
+    // ⭐【0.6.2】只创建一次的 <style> 节点：以前每次重渲染都重新 createElement，
+    //   题目多时白白增加 reconciler 工作量。
+    const STYLE_NODE = h('style', null, CSS_FINAL);
 
     // ------------------------------------------------------------------
     // 组装回传文本
@@ -1407,8 +1491,8 @@ window.__ModuleLoader__.load({
         name: 'sidebar.right.pane.tab',
         key: TAB_ID,
         locale: NS,
-        inject: () => ({ t, submit, collapse: collapseSidebar, upload: uploadAttachment }),
-      }, GatePanel));
+        inject: () => ({ t, submit, collapse: collapseSidebar, upload: uploadAttachment, cancel: cancelGate }),
+      }, GatePanelMemo));
 
       ctx.slots.inject('tool.call.toolview', () => ctx.slots.register({
         name: 'tool.call.toolview',
@@ -1437,7 +1521,7 @@ window.__ModuleLoader__.load({
 
     // 【调试出口】只读，供本地测试校验解析与回传格式
     try {
-      window.__GATE_DEBUG__ = { extractGate, parseToolGate, normalizeGate, buildReturn, buildPromptContent, fmtBytes, setGate, getGate, markSubmitted, sendToSession, makeT };
+      window.__GATE_DEBUG__ = { extractGate, parseToolGate, normalizeGate, buildReturn, buildPromptContent, fmtBytes, setGate, getGate, markSubmitted, cancelGate, sendToSession, makeT };
     } catch (e) { /* 没有 window 也不影响插件 */ }
 
     return { inject, apply };
