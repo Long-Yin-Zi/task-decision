@@ -1,0 +1,55 @@
+{
+  "name": "dsh-work-summary-gate",
+  "version": "0.5.0",
+  "type": "module",
+  "description": "本轮工作 & 待拍板：把 AI 每轮回复里的待决问题收集到右侧边栏，一次性选完、写备注、提交回会话",
+  "keywords": [
+    "deepseek",
+    "deepseek-harness",
+    "dsh",
+    "dsh-plugin",
+    "plugin",
+    "sidebar",
+    "human-in-the-loop",
+    "approval",
+    "work-summary",
+    "decision"
+  ],
+  "license": "MIT",
+  "author": "tdcy",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tdcy/dsh-work-summary-gate.git"
+  },
+  "homepage": "https://github.com/tdcy/dsh-work-summary-gate#readme",
+  "bugs": {
+    "url": "https://github.com/tdcy/dsh-work-summary-gate/issues"
+  },
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg"
+  },
+  "files": [
+    "index.js",
+    "client.js",
+    "cordis.patch.yml",
+    "locale/*.json",
+    "icon.svg"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-conversation",
+        "@deepseek-ai/dsh-client-ui-sidebar-right",
+        "@deepseek-ai/dsh-client-ui-session"
+      ]
+    }
+  }
+}
