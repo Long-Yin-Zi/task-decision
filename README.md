@@ -37,7 +37,7 @@ dsh plugin --profile web add task-decision
 ### 方式二：直接从 GitHub 源码安装
 
 ```bash
-dsh plugin --profile web add github:tdcy/task-decision
+dsh plugin --profile web add github:Long-Yin-Zi/task-decision
 ```
 
 安装完成后**重启 `dsh web`**（宿主半部在启动时加载）。

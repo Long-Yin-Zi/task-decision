@@ -19,11 +19,11 @@
   "author": "tdcy",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/tdcy/task-decision.git"
+    "url": "git+https://github.com/Long-Yin-Zi/task-decision.git"
   },
-  "homepage": "https://github.com/tdcy/task-decision#readme",
+  "homepage": "https://github.com/Long-Yin-Zi/task-decision#readme",
   "bugs": {
-    "url": "https://github.com/tdcy/task-decision/issues"
+    "url": "https://github.com/Long-Yin-Zi/task-decision/issues"
   },
   "exports": {
     ".": "./index.js",
