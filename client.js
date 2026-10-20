@@ -77,6 +77,14 @@ window.__ModuleLoader__.load({
       qnoteLabel: '整题备注：',
       doneHint: '新的拍板会替换这里',
       overallLabel: '整体补充',
+      // ⭐【0.6.0】附件相关
+      attachAdd: '添加附件',
+      attachHint: '可直接 Ctrl+V 粘贴截图/文件，或拖进这一题',
+      attachBusy: '处理中…',
+      attachFailed: '附件失败',
+      attachRemove: '移除这个附件',
+      attachWait: '还有附件没处理完，稍等再提交',
+      attachUnavailable: '当前 DSH 未提供附件上传服务',
     };
     const en = {
       tab: 'Work Summary & Gate',
@@ -118,6 +126,13 @@ window.__ModuleLoader__.load({
       qnoteLabel: 'Overall note: ',
       doneHint: 'A new gate will replace this',
       overallLabel: 'Overall note',
+      attachAdd: 'Add attachment',
+      attachHint: 'Ctrl+V to paste a screenshot/file here, or drag one in',
+      attachBusy: 'Working…',
+      attachFailed: 'Attachment failed',
+      attachRemove: 'Remove this attachment',
+      attachWait: 'Attachments are still being processed — try again in a moment',
+      attachUnavailable: 'This DSH build does not provide attachment upload',
     };
 
     // ------------------------------------------------------------------
@@ -309,38 +324,78 @@ window.__ModuleLoader__.load({
     //       AI 只看到"用户选了 b"却不知道 b 是什么问题下的 b，很可能办错方向。
     //       现在把标题放进括号里，AI 拿到回传就能对上"这是哪个问题、选了什么"。
     // ------------------------------------------------------------------
+    /** 一题的「文字答案」行：选了什么 / 未选项 + 整题备注 */
+    function qAnswerLine(q, picked, notes, qNotes, hasAttach) {
+      const sel = picked[q.id] || [];
+      const qn = String((qNotes && qNotes[q.id]) || '').trim();
+      const tail = qn ? '；整题备注：' + qn : '';
+      // ⭐ 问题标题一并带回（没有标题就退化成纯代号，不至于报错）
+      const title = String(q.title || '').trim();
+      const head = q.id + (title ? '（' + title + '）' : '');
+      // 【为什么 hasAttach 要影响这里】只有附件没有文字的题，写「未选择」会让模型以为用户弃权；
+      //   改成「未选项（见下方附件）」才能表达"答案就在附件里"。
+      if (!sel.length) return head + ': ' + (qn ? '未选项' : (hasAttach ? '未选项（答案见下方附件）' : '未选择')) + tail;
+      const parts = sel.map((oid) => {
+        const opt = q.options.find((o) => o.id === oid);
+        const label = opt ? opt.label : oid;
+        const note = notes[q.id] && notes[q.id][oid];
+        return note
+          ? oid + '「' + label + '」（备注：' + note + '）'
+          : oid + '「' + label + '」';
+      });
+      return head + ': 选 ' + parts.join('、') + tail;
+    }
+
     function buildReturn(gate, picked, notes, qNotes, overall) {
       const lines = ['【拍板回传】'];
-      gate.questions.forEach((q) => {
-        const sel = picked[q.id] || [];
-        const qn = String((qNotes && qNotes[q.id]) || '').trim();
-        const tail = qn ? '；整题备注：' + qn : '';
-        // ⭐ 问题标题一并带回（没有标题就退化成纯代号，不至于报错）
-        const title = String(q.title || '').trim();
-        const head = q.id + (title ? '（' + title + '）' : '');
-        if (!sel.length) {
-          lines.push(head + ': ' + (qn ? '未选项' : '未选择') + tail);
-          return;
-        }
-        const parts = sel.map((oid) => {
-          const opt = q.options.find((o) => o.id === oid);
-          const label = opt ? opt.label : oid;
-          const note = notes[q.id] && notes[q.id][oid];
-          return note
-            ? oid + '「' + label + '」（备注：' + note + '）'
-            : oid + '「' + label + '」';
-        });
-        lines.push(head + ': 选 ' + parts.join('、') + tail);
-      });
+      gate.questions.forEach((q) => { lines.push(qAnswerLine(q, picked, notes, qNotes)); });
       if (overall && overall.trim()) lines.push('（整体补充：' + overall.trim() + '）');
       return lines.join('\n');
+    }
+
+    function fmtBytes(n) {
+      const v = Number(n) || 0;
+      if (v < 1024) return v + ' B';
+      if (v < 1024 * 1024) return (v / 1024).toFixed(1) + ' KB';
+      return (v / 1024 / 1024).toFixed(1) + ' MB';
+    }
+
+    /**
+     * ⭐【0.6.0】把「文字 + 附件」组装成 DSH 的消息内容块。
+     *   DSH 的消息通道只认三种块：
+     *     { type:'text',  text }                          文字
+     *     { type:'image', mediaType, data, name }         图片（内联 base64，宿主负责规范化保存）
+     *     { type:'file',  receiptId }                     任意文件（先用 fileUpload 上传拿收据）
+     *   顺序 = 先写这题的文字，紧跟这题的附件，逐题串下去——
+     *   这样模型读到某个图片/文件时，它前面紧挨着的那行就是"这属于哪道题"。
+     */
+    function buildPromptContent(gate, picked, notes, qNotes, overall, attachments) {
+      const blocks = [{ type: 'text', text: '【拍板回传】' }];
+      gate.questions.forEach((q) => {
+        const list = (attachments && attachments[q.id]) || [];
+        blocks.push({ type: 'text', text: qAnswerLine(q, picked, notes, qNotes, list.length > 0) });
+        list.forEach((f, i) => {
+          blocks.push({
+            type: 'text',
+            text: '  附件 ' + (i + 1) + '/' + list.length + '：' + f.name
+              + '（' + (f.kind === 'image' ? '图片' : '文件') + '，' + fmtBytes(f.size) + '）',
+          });
+          if (f.kind === 'image' && f.data) {
+            blocks.push({ type: 'image', mediaType: f.mediaType, data: f.data, name: f.name });
+          } else if (f.receiptId) {
+            blocks.push({ type: 'file', receiptId: f.receiptId });
+          }
+        });
+      });
+      if (overall && overall.trim()) blocks.push({ type: 'text', text: '（整体补充：' + overall.trim() + '）' });
+      return blocks;
     }
 
     // ------------------------------------------------------------------
     // 面板
     // ------------------------------------------------------------------
     function GatePanel(props) {
-      const { t, submit, sessionId, collapse } = props;
+      const { t, submit, sessionId, collapse, upload } = props;
       const row = useSyncExternalStore(
         subscribe,
         () => gates.get(sessionId) || null,
@@ -354,6 +409,16 @@ window.__ModuleLoader__.load({
       //   【为什么必须有】原来的备注只在"选中某个选项"后才出现，
       //   于是"上面的选项我都不想要"时——既没法表达意见，也提交不了。
       const [qNotes, setQNotes] = useState({});
+      // ⭐【0.6.0】每题附件：{ qid: [entry] }
+      //   entry = { id, name, size, kind:'image'|'file', mediaType, previewUrl, data(base64),
+      //             receiptId, status:'reading'|'uploading'|'ready'|'error', error, promise }
+      //   【为什么用 ref 而不是 state】上传进度回调是异步的，闭包里必须读到最新列表；
+      //   再用一个计数器触发重渲染，避免「state 快照过期 → 进度/状态丢更新」。
+      const attachRef = useRef({});
+      const fileInputRef = useRef(null);
+      const filePickTarget = useRef('');
+      const [, setAttachTick] = useState(0);
+      const bumpAttach = () => setAttachTick((n) => n + 1);
       /**
        * ⭐【2026-10 新增】防重复提交的**同步锁**
        *
@@ -380,6 +445,7 @@ window.__ModuleLoader__.load({
         setPicked({});
         setNotes({});
         setQNotes({});
+        attachRef.current = {};
         setOverall('');
         setPhase('idle');
         setErr('');
@@ -419,9 +485,114 @@ window.__ModuleLoader__.load({
         setPhase('idle');
         setInvalid(false);
       };
-      /** 这一题算不算"已答复"：选了选项，或者写了整题备注 */
+
+      // ==================================================================
+      //  ⭐【0.6.0】附件：每题独立的「粘贴 / 拖拽 / 选文件」区
+      //    图片 → 直接读成 base64，随消息内联发出（DSH 宿主会验格式并规范化保存）
+      //    其他文件 → 立即后台上传到 DSH 的 fileUpload 服务，拿到 receiptId，提交时只引收据
+      //    【为什么图片不也上传】DSH 的图片块就是内联 base64，没有收据一说；
+      //                      而普通文件必须走上传，否则模型只能收到一段无意义的字符串。
+      // ==================================================================
+      const IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
+      const entriesOf = (qid) => attachRef.current[qid] || [];
+      const nextAttachId = () => 'f' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+
+      const readImageBase64 = (file) => new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const url = String(reader.result || '');
+          const i = url.indexOf(',');
+          resolve(i >= 0 ? url.slice(i + 1) : '');
+        };
+        reader.onerror = () => reject(reader.error || new Error('读取图片失败'));
+        reader.readAsDataURL(file);
+      });
+
+      const addFiles = (qid, fileList) => {
+        const list = Array.from(fileList || []).filter(Boolean);
+        if (!list.length) return;
+        const bucket = attachRef.current[qid] || (attachRef.current[qid] = []);
+        list.forEach((file) => {
+          const kind = IMAGE_TYPES.includes(file.type) ? 'image' : 'file';
+          const entry = {
+            id: nextAttachId(),
+            name: file.name || (kind === 'image' ? '粘贴的图片' : '未命名文件'),
+            size: file.size,
+            kind,
+            mediaType: kind === 'image' ? file.type : undefined,
+            status: kind === 'image' ? 'reading' : 'uploading',
+          };
+          if (kind === 'image') {
+            entry.previewUrl = URL.createObjectURL(file);
+            entry.promise = readImageBase64(file)
+              .then((data) => { entry.data = data; entry.status = 'ready'; })
+              .catch((e) => { entry.status = 'error'; entry.error = (e && e.message) || String(e); })
+              .finally(bumpAttach);
+          } else if (typeof upload === 'function') {
+            const controller = new AbortController();
+            entry.abort = () => controller.abort();
+            entry.promise = Promise.resolve()
+              .then(() => upload(sessionId, file, file.name || undefined, controller.signal, (progress) => {
+                if (progress && progress.loaded !== undefined) entry.loaded = progress.loaded;
+                if (progress && progress.total !== undefined) entry.total = progress.total;
+                bumpAttach();
+              }))
+              .then((res) => {
+                if (res && res.ok === false) throw new Error((res.error && res.error.message) || '文件上传失败');
+                const value = res && res.value ? res.value : res;
+                if (!value || !value.receiptId) throw new Error('文件上传没有返回收据');
+                entry.receiptId = value.receiptId;
+                entry.status = 'ready';
+              })
+              .catch((e) => { entry.status = 'error'; entry.error = (e && e.message) || String(e); })
+              .finally(bumpAttach);
+          } else {
+            entry.status = 'error';
+            entry.error = t.attachUnavailable;
+          }
+          bucket.push(entry);
+        });
+        bumpAttach();
+      };
+
+      const removeAttach = (qid, id) => {
+        const bucket = attachRef.current[qid] || [];
+        const entry = bucket.find((x) => x.id === id);
+        if (entry) {
+          try { if (entry.abort) entry.abort(); } catch (e) { /* 取消失败不影响移除 */ }
+          try { if (entry.previewUrl) URL.revokeObjectURL(entry.previewUrl); } catch (e) { /* 同上 */ }
+        }
+        attachRef.current[qid] = bucket.filter((x) => x.id !== id);
+        bumpAttach();
+      };
+
+      const pickFiles = (qid) => {
+        filePickTarget.current = qid;
+        const el = fileInputRef.current;
+        if (el) { el.value = ''; el.click(); }
+      };
+
+      const filesFromClipboard = (clipboard) => {
+        const out = [];
+        if (!clipboard) return out;
+        if (clipboard.items && clipboard.items.length) {
+          for (const item of clipboard.items) {
+            if (item.kind === 'file') {
+              const f = item.getAsFile();
+              if (f) out.push(f);
+            }
+          }
+        }
+        if (!out.length && clipboard.files && clipboard.files.length) {
+          for (const f of clipboard.files) out.push(f);
+        }
+        return out;
+      };
+
+      /** 这一题算不算"已答复"：选了选项、写了整题备注，或者挂了附件 */
       const answeredOf = (q) => (picked[q.id] || []).length > 0
-        || String(qNotes[q.id] || '').trim().length > 0;
+        || String(qNotes[q.id] || '').trim().length > 0
+        || entriesOf(q.id).length > 0;
 
       /**
        * ⭐【0.5.0】已提交后的只读回放行：
@@ -449,6 +620,48 @@ window.__ModuleLoader__.load({
         }
         if (qn) rows.push(h('div', { key: 'qn', className: 'wg-answer-note' }, t.qnoteLabel + qn));
         return rows;
+      };
+
+      /** 已提交后的附件回放：显示文件名/大小，图片还能看到缩略图 */
+      const replayAttachRows = (q) => {
+        const list = replay && replay.attachments && replay.attachments[q.id] ? replay.attachments[q.id] : [];
+        if (!list.length) return null;
+        return h('div', { className: 'wg-attach-list wg-attach-list-readonly' },
+          list.map((e, i) => h('div', { key: 'rf-' + i, className: 'wg-attach-item' },
+            e.kind === 'image' && e.previewUrl
+              ? h('img', {
+                className: 'wg-attach-thumb',
+                src: e.previewUrl,
+                alt: '',
+                // 页面刷新后 blob: 预览会失效，隐藏而不是留一个碎图标
+                onError: (ev2) => { if (ev2 && ev2.target) ev2.target.style.display = 'none'; },
+              })
+              : h('span', { className: 'wg-attach-ico' }, e.kind === 'image' ? 'IMG' : 'FILE'),
+            h('span', { className: 'wg-attach-name', title: e.name }, e.name),
+            h('span', { className: 'wg-attach-meta' }, fmtBytes(e.size)))));
+      };
+
+      // ⭐【0.6.0】拖拽 / 粘贴：事件挂在题卡上，所以"拖进哪张卡就属于哪道题"
+      const handleDragOver = (ev) => {
+        const dt = ev.dataTransfer;
+        if (!dt) return;
+        const types = dt.types ? Array.from(dt.types) : [];
+        if (!types.includes('Files')) return;
+        ev.preventDefault();
+        dt.dropEffect = 'copy';
+      };
+      const handleDrop = (qid, ev) => {
+        const dt = ev.dataTransfer;
+        if (!dt || !dt.files || !dt.files.length) return;
+        ev.preventDefault();
+        addFiles(qid, dt.files);
+      };
+      const handlePaste = (qid, ev) => {
+        const cb = ev.clipboardData || (ev.nativeEvent && ev.nativeEvent.clipboardData);
+        const files = filesFromClipboard(cb);
+        if (!files.length) return;
+        ev.preventDefault();
+        addFiles(qid, files);
       };
 
       const onSend = async () => {
@@ -486,14 +699,42 @@ window.__ModuleLoader__.load({
         // 进入临界区：从这一刻起到 finally 之前，任何再次点击都会被闸①挡掉
         sendLock.current = true;
         try {
-          await submit(sessionId, buildReturn(gate, picked, notes, qNotes, overall));
+          // ⭐【0.6.0】先把附件都等就绪：图片读成 base64、文件拿到 receiptId。
+          //   只要有一个失败，整条不发 —— 半截附件发出去会让 AI 对着不存在的文件干活。
+          const allEntries = [];
+          gate.questions.forEach((q) => { for (const e of entriesOf(q.id)) allEntries.push(e); });
+          if (allEntries.length) {
+            const pending = allEntries.map((e) => (e.promise ? e.promise.catch(() => {}) : null)).filter(Boolean);
+            if (pending.length) await Promise.all(pending);
+            const failed = allEntries.filter((e) => e.status === 'error');
+            if (failed.length) {
+              throw new Error(t.attachFailed + '：' + failed.map((e) => e.name + '（' + (e.error || '') + '）').join('；'));
+            }
+            if (allEntries.some((e) => e.status !== 'ready')) throw new Error(t.attachWait);
+          }
+          const attachments = {};
+          const snapshotAttach = {};
+          gate.questions.forEach((q) => {
+            const es = entriesOf(q.id);
+            if (!es.length) return;
+            attachments[q.id] = es.map((e) => ({
+              name: e.name, size: e.size, kind: e.kind,
+              mediaType: e.mediaType, data: e.data, receiptId: e.receiptId,
+            }));
+            // 回放快照只存展示需要的字段（不带 base64，免得把 store 撞大）
+            snapshotAttach[q.id] = es.map((e) => ({
+              name: e.name, size: e.size, kind: e.kind, previewUrl: e.previewUrl,
+            }));
+          });
+          await submit(sessionId, buildPromptContent(gate, picked, notes, qNotes, overall, attachments));
           // ⭐【0.5.0】提交前存一份快照，供只读回放用（面板关掉重开也看得到）
-          markSubmitted(sessionId, { picked, notes, qNotes, overall });
+          markSubmitted(sessionId, { picked, notes, qNotes, overall, attachments: snapshotAttach });
           setPhase('done');
           setPicked({});
           setNotes({});
           setQNotes({});
           setOverall('');
+          attachRef.current = {};
           // ⭐【2026-10 新增】提交成功后**自动收起右侧栏**，把注意力还给 AI 的回复
           //   【为什么延迟 350ms 再收】先把"已提交"这个状态渲染出来，
           //   让用户看到提交确实成功了；立刻收栏会让人不确定自己到底点上没有。
@@ -520,6 +761,7 @@ window.__ModuleLoader__.load({
       const replayAnswered = (q) => !!(replay && (
         (replay.picked[q.id] || []).length
         || String((replay.qNotes && replay.qNotes[q.id]) || '').trim()
+        || (replay.attachments && replay.attachments[q.id] ? replay.attachments[q.id].length : 0)
       ));
       const answeredCount = readonly
         ? gate.questions.filter(replayAnswered).length
@@ -533,6 +775,19 @@ window.__ModuleLoader__.load({
 
       return h('div', { className: 'wg-wrap', 'data-phase': phase },
         h('style', null, CSS_FINAL),
+        // ⭐【0.6.0】隐藏的文件选择器：一题一个"添加附件"按钮共用它，
+        //   点按钮时先把 qid 记到 filePickTarget，再触发 click。
+        h('input', {
+          type: 'file',
+          multiple: true,
+          ref: fileInputRef,
+          className: 'wg-file-input',
+          onChange: (ev) => {
+            const qid = filePickTarget.current;
+            const files = ev.target.files;
+            if (qid && files && files.length) addFiles(qid, files);
+          },
+        }),
         h('div', { className: 'wg-head' },
           h('span', { className: 'wg-head-title' }, t.tab),
           total ? h('span', { className: 'wg-count' }, String(total)) : null,
@@ -576,6 +831,9 @@ window.__ModuleLoader__.load({
                   key: q.id,
                   'data-answered': answered ? 'true' : 'false',
                   'data-invalid': bad ? 'true' : 'false',
+                  onDragOver: readonly ? undefined : handleDragOver,
+                  onDrop: readonly ? undefined : (ev) => handleDrop(q.id, ev),
+                  onPaste: readonly ? undefined : (ev) => handlePaste(q.id, ev),
                 },
                   h('div', { className: 'wg-q-top' },
                     h('span', { className: 'wg-no' }, String(q.id).replace(/^q/i, '') || q.id),
@@ -584,7 +842,7 @@ window.__ModuleLoader__.load({
                   q.prompt ? h('div', { className: 'wg-q-prompt' }, q.prompt) : null,
                   // ⭐【0.5.0】已提交 → 只读回放；否则才是可编辑的选项 + 备注
                   readonly
-                    ? h('div', { className: 'wg-answers' }, replayRows(q))
+                    ? h('div', { className: 'wg-answers' }, replayRows(q), replayAttachRows(q))
                     : h('div', null,
                       h('div', { className: 'wg-opts' },
                         q.options.map((o) => {
@@ -617,6 +875,39 @@ window.__ModuleLoader__.load({
                           value: qNotes[q.id] || '',
                           onChange: (e) => setQNote(q.id, e.target.value),
                         })),
+                      // ⭐【0.6.0】附件：点按钮选文件 / 直接 Ctrl+V 粘贴 / 拖进这张卡
+                      h('div', { className: 'wg-attach' },
+                        h('div', { className: 'wg-attach-bar' },
+                          h('button', {
+                            className: 'wg-attach-add',
+                            onClick: () => pickFiles(q.id),
+                          }, t.attachAdd),
+                          h('span', { className: 'wg-attach-hint' }, t.attachHint)),
+                        entriesOf(q.id).length
+                          ? h('div', { className: 'wg-attach-list' },
+                            entriesOf(q.id).map((e) => h('div', {
+                              key: e.id,
+                              className: 'wg-attach-item',
+                              'data-status': e.status,
+                            },
+                              e.kind === 'image' && e.previewUrl
+                                ? h('img', { className: 'wg-attach-thumb', src: e.previewUrl, alt: '' })
+                                : h('span', { className: 'wg-attach-ico' }, e.kind === 'image' ? 'IMG' : 'FILE'),
+                              h('span', { className: 'wg-attach-name', title: e.name }, e.name),
+                              h('span', { className: 'wg-attach-meta' },
+                                e.status === 'error'
+                                  ? (e.error || t.attachFailed)
+                                  : e.status === 'ready'
+                                    ? fmtBytes(e.size)
+                                    : (e.status === 'uploading' && e.total
+                                      ? Math.round((e.loaded / e.total) * 100) + '%'
+                                      : t.attachBusy)),
+                              h('button', {
+                                className: 'wg-attach-del',
+                                title: t.attachRemove,
+                                onClick: () => removeAttach(q.id, e.id),
+                              }, '\u00d7'))))
+                          : null),
                       bad ? h('div', { className: 'wg-invalid' }, t.needPickOrNote) : null),
                 );
               })),
@@ -939,6 +1230,39 @@ window.__ModuleLoader__.load({
 .wg-more:focus-visible,.wg-more-row:focus-visible,.wg-retry:focus-visible,
 .wg-q:focus-visible{outline:2px solid var(--wg-brand);outline-offset:2px;border-radius:4px}
 
+/* 21 · 每题附件：按钮行 + 已选列表 */
+.wg-attach{margin-top:8px}
+.wg-attach-bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.wg-attach-add{display:inline-flex;align-items:center;gap:5px;height:26px;padding:0 10px;border-radius:6px;
+  cursor:pointer;font:inherit;font-size:11.5px;line-height:1;
+  border:1px dashed var(--wg-line-2);background:transparent;color:var(--wg-text-2)}
+.wg-attach-add:hover{border-color:var(--wg-accent);color:var(--wg-text)}
+.wg-attach-add:focus-visible{outline:2px solid var(--wg-brand);outline-offset:1px}
+.wg-attach-add::before{content:"+";font-size:13px;line-height:1;color:var(--wg-text-3)}
+.wg-attach-hint{font-size:11px;line-height:16px;color:var(--wg-text-3)}
+.wg-attach-list{display:flex;flex-direction:column;gap:4px;margin-top:6px}
+.wg-attach-item{display:flex;align-items:center;gap:8px;min-height:28px;padding:3px 6px;
+  border:1px solid var(--wg-line);border-radius:6px;background:var(--wg-raised);
+  font-size:11.5px;line-height:16px}
+.wg-attach-item[data-status="error"]{border-color:var(--wg-ring-bad);background:var(--wg-tint-bad)}
+.wg-attach-item[data-status="uploading"] .wg-attach-meta,
+.wg-attach-item[data-status="reading"] .wg-attach-meta{color:var(--wg-text-3)}
+.wg-attach-thumb{flex:0 0 auto;width:24px;height:24px;border-radius:4px;object-fit:cover;
+  border:1px solid var(--wg-line-2);background:var(--wg-sunken)}
+.wg-attach-ico{flex:0 0 auto;display:inline-flex;align-items:center;justify-content:center;
+  width:24px;height:24px;border-radius:4px;background:var(--wg-sunken);
+  font-size:8px;font-weight:600;color:var(--wg-text-3);letter-spacing:0}
+.wg-attach-name{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  color:var(--wg-text)}
+.wg-attach-meta{flex:0 0 auto;max-width:45%;color:var(--wg-text-3);font-variant-numeric:tabular-nums;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.wg-attach-del{flex:0 0 auto;width:18px;height:18px;padding:0;border:0;border-radius:4px;
+  background:transparent;cursor:pointer;color:var(--wg-text-3);font:inherit;font-size:13px;line-height:1}
+.wg-attach-del:hover{background:var(--wg-hover);color:var(--wg-text)}
+.wg-attach-del:focus-visible{outline:2px solid var(--wg-brand);outline-offset:1px}
+.wg-attach-list-readonly{margin-top:8px}
+.wg-file-input{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
+
 /* 12 · 提交中冻结 */
 .wg-wrap[data-phase="sending"] .wg-opt{pointer-events:none}
 @media (prefers-reduced-motion: reduce){
@@ -961,8 +1285,10 @@ window.__ModuleLoader__.load({
     //   路径 1：sessions.binding(sessionId).session.prompt(...)  ← conversation.send 内部同款
     //   路径 2：会话作用域 conversation 服务（必须用 get，不能用属性）
     // ------------------------------------------------------------------
-    async function sendToSession(sessions, sessionId, text) {
-      const content = [{ type: 'text', text: text }];
+    async function sendToSession(sessions, sessionId, content) {
+      // content 可以是字符串（纯文字）或 DSH 的内容块数组（文字 + 图片 + 文件收据）
+      const parts = Array.isArray(content) ? content : [{ type: 'text', text: String(content == null ? '' : content) }];
+      const hasAttachments = parts.some((p) => p && (p.type === 'image' || p.type === 'file'));
       let firstError = null;
       try {
         const binding = sessions && typeof sessions.binding === 'function'
@@ -970,7 +1296,7 @@ window.__ModuleLoader__.load({
           : undefined;
         const session = binding && binding.session;
         if (session && typeof session.prompt === 'function') {
-          const res = await session.prompt(content, 'queue');
+          const res = await session.prompt(parts, 'queue');
           if (res && res.ok === false) {
             const msg = res.error && res.error.message ? res.error.message : 'unknown';
             throw new Error('发送失败：' + msg);
@@ -981,17 +1307,21 @@ window.__ModuleLoader__.load({
         if (e && e.message && e.message.indexOf('发送失败') === 0) throw e;
         firstError = e;
       }
-      try {
-        const scope = sessions && typeof sessions.scope === 'function' ? sessions.scope(sessionId) : undefined;
-        const conv = scope && typeof scope.get === 'function' ? scope.get('conversation') : undefined;
-        if (conv && typeof conv.send === 'function') {
-          await conv.send(text);
-          return true;
+      // 退路：conversation.send 只接受纯文本，带附件时不能用
+      if (!hasAttachments) {
+        try {
+          const text = parts.map((p) => (p && p.type === 'text' ? p.text : '')).join('');
+          const scope = sessions && typeof sessions.scope === 'function' ? sessions.scope(sessionId) : undefined;
+          const conv = scope && typeof scope.get === 'function' ? scope.get('conversation') : undefined;
+          if (conv && typeof conv.send === 'function') {
+            await conv.send(text);
+            return true;
+          }
+        } catch (e) {
+          firstError = firstError || e;
         }
-      } catch (e) {
-        firstError = firstError || e;
       }
-      throw new Error('当前会话没有可用的发送通道' + (firstError ? '（' + (firstError.message || firstError) + '）' : ''));
+      throw new Error('当前会话没有可用的发送通道' + (hasAttachments ? '（带附件的消息需要 session.prompt 通道）' : '') + (firstError ? '（' + (firstError.message || firstError) + '）' : ''));
     }
 
     function apply(ctx) {
@@ -1016,7 +1346,26 @@ window.__ModuleLoader__.load({
       };
 
       // 发送：统一走模块级 sendToSession（两条通道 + 明确错误）
-      const submit = (sessionId, text) => sendToSession(ctx.sessions, sessionId, text);
+      // content 可以是字符串也可以是内容块数组（0.6.0 起支持文字+图片+文件）
+      const submit = (sessionId, content) => sendToSession(ctx.sessions, sessionId, content);
+
+      /**
+       * ⭐【0.6.0】附件上传：DSH 自带的客户端服务 `fileUpload`
+       *   upload(sessionId, blob, name, signal, onProgress) → { ok, value: { receiptId, file } }
+       *   图片不走这里（它们内联成 base64）；这里只处理普通文件。
+       *   服务缺失时返回一个 ok:false 的结果，由面板显示成"该附件上传失败"。
+       */
+      const uploadAttachment = (sessionId, file, name, signal, onProgress) => {
+        try {
+          const svc = ctx.get('fileUpload');
+          if (!svc || typeof svc.upload !== 'function') {
+            return Promise.resolve({ ok: false, error: { message: '当前 DSH 未提供附件上传服务（fileUpload）' } });
+          }
+          return svc.upload(sessionId, file, name, signal, onProgress);
+        } catch (e) {
+          return Promise.resolve({ ok: false, error: { message: e && e.message ? e.message : String(e) } });
+        }
+      };
 
       /**
        * ⭐【2026-10 新增】收起右侧栏（用户点「提交拍板」后调用）
@@ -1072,7 +1421,7 @@ window.__ModuleLoader__.load({
         name: 'sidebar.right.pane.tab',
         key: TAB_ID,
         locale: NS,
-        inject: () => ({ t, submit, collapse: collapseSidebar }),
+        inject: () => ({ t, submit, collapse: collapseSidebar, upload: uploadAttachment }),
       }, GatePanel));
 
       ctx.slots.inject('tool.call.toolview', () => ctx.slots.register({
@@ -1102,7 +1451,7 @@ window.__ModuleLoader__.load({
 
     // 【调试出口】只读，供本地测试校验解析与回传格式
     try {
-      window.__GATE_DEBUG__ = { extractGate, parseToolGate, normalizeGate, buildReturn, setGate, getGate, markSubmitted, sendToSession, makeT };
+      window.__GATE_DEBUG__ = { extractGate, parseToolGate, normalizeGate, buildReturn, buildPromptContent, fmtBytes, setGate, getGate, markSubmitted, sendToSession, makeT };
     } catch (e) { /* 没有 window 也不影响插件 */ }
 
     return { inject, apply };
