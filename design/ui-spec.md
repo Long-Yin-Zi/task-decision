@@ -1,4 +1,4 @@
-# dsh-work-summary-gate · 右侧面板 UI 规范
+# task-decision · 右侧面板 UI 规范
 
 > 版本 v1.0 · 适用 `client.js` 0.3.x · 面板宽 360–420px、高度满屏
 > 本文只写**视觉 + 文案 + 状态契约**，不改任何代码。落地方式：按第 8 节附录 A 整段替换现有 `CSS` + `CSS2`。

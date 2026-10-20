@@ -1,4 +1,4 @@
-# dsh-work-summary-gate · 本轮工作 & 待拍板
+# task-decision · 本轮工作 & 待拍板
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 [![DSH Plugin](https://img.shields.io/badge/DSH-plugin-4D6BFE.svg)](https://dsh-plugin.org)
@@ -31,13 +31,13 @@
 ### 方式一：从 npm（推荐，会出现在 DSH 插件中心）
 
 ```bash
-dsh plugin --profile web add dsh-work-summary-gate
+dsh plugin --profile web add task-decision
 ```
 
 ### 方式二：直接从 GitHub 源码安装
 
 ```bash
-dsh plugin --profile web add github:tdcy/dsh-work-summary-gate
+dsh plugin --profile web add github:tdcy/task-decision
 ```
 
 安装完成后**重启 `dsh web`**（宿主半部在启动时加载）。

@@ -1,5 +1,5 @@
 {
-  "name": "dsh-work-summary-gate",
+  "name": "task-decision",
   "version": "0.5.0",
   "type": "module",
   "description": "本轮工作 & 待拍板：把 AI 每轮回复里的待决问题收集到右侧边栏，一次性选完、写备注、提交回会话",
@@ -19,11 +19,11 @@
   "author": "tdcy",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/tdcy/dsh-work-summary-gate.git"
+    "url": "git+https://github.com/tdcy/task-decision.git"
   },
-  "homepage": "https://github.com/tdcy/dsh-work-summary-gate#readme",
+  "homepage": "https://github.com/tdcy/task-decision#readme",
   "bugs": {
-    "url": "https://github.com/tdcy/dsh-work-summary-gate/issues"
+    "url": "https://github.com/tdcy/task-decision/issues"
   },
   "exports": {
     ".": "./index.js",

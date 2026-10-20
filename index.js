@@ -1,5 +1,5 @@
 // ============================================================================
-// dsh-work-summary-gate · 宿主半部
+// task-decision · 宿主半部
 // ----------------------------------------------------------------------------
 // 【v0.2 为什么改用工具调用，而不是正文里的标记块】
 //   v0.1 让模型在正文末尾输出 <!-- dsh-gate:start … --> 标记块，
@@ -15,7 +15,7 @@
 //   2) 往系统提示词里加规则，要求模型每轮结束时调用它
 // ============================================================================
 
-const GATE_RULES = `## 每轮结束时登记「本轮摘要 + 待拍板」（dsh-work-summary-gate）
+const GATE_RULES = `## 每轮结束时登记「本轮摘要 + 待拍板」（task-decision）
 
 你必须在每轮回复**结束前**调用一次工具 \`gate_ask\`（放在这轮最后；调用完再给最终答复也可以）：
 
@@ -111,15 +111,15 @@ export function apply(ctx) {
         return { ok: true, questions };
       },
     }),
-    'dsh-work-summary-gate: gate_ask tool',
+    'task-decision: gate_ask tool',
   );
 
   ctx.effect(
     () => ctx.systemPrompt.section({
-      name: 'dsh-work-summary-gate',
+      name: 'task-decision',
       order: 40,
       text: GATE_RULES,
     }),
-    'dsh-work-summary-gate: prompt rules',
+    'task-decision: prompt rules',
   );
 }

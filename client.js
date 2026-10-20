@@ -1,5 +1,5 @@
 // ============================================================================
-// dsh-work-summary-gate · 浏览器半部
+// task-decision · 浏览器半部
 // ----------------------------------------------------------------------------
 // 【整条链路】
 //   1) 模型在回复末尾输出 <!-- dsh-gate:start … dsh-gate:end --> 标记块
@@ -18,17 +18,17 @@
 // ============================================================================
 
 window.__ModuleLoader__.load({
-  id: 'dsh-work-summary-gate',
+  id: 'task-decision',
   factory(require) {
     const React = require('react');
     const h = React.createElement;
     const { useRef, useState, useEffect, useSyncExternalStore } = React;
 
-    const NS = 'dsh-work-summary-gate';
+    const NS = 'task-decision';
     const START = 'dsh-gate:start';
     const END = 'dsh-gate:end';
-    const TAB_KIND = 'dsh-work-summary-gate';
-    const TAB_ID = 'dsh-work-summary-gate';
+    const TAB_KIND = 'task-decision';
+    const TAB_ID = 'task-decision';
 
     // ------------------------------------------------------------------
     // 文案
@@ -1003,7 +1003,7 @@ window.__ModuleLoader__.load({
       //   所有文案都落到中文兜底。这里把 zh/en 两张表注册进 NS，
       //   DSH 切成英文时才能拿到英文文案（中文仍是最终兜底，不会露出 key）。
       try {
-        ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'dsh-work-summary-gate: dictionaries');
+        ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'task-decision: dictionaries');
       } catch (e) { /* 旧版本 locale 服务没有 register：退化成中文兜底，不影响使用 */ }
 
       // 【v0.2 修复】sidebarRight 不在客户端服务目录里，ctx.inject 根本不会触发；
@@ -1065,7 +1065,7 @@ window.__ModuleLoader__.load({
         id: TAB_ID,
         kind: TAB_KIND,
         title: () => t.tab,
-      }), 'work-summary-gate: tab type');
+      }), 'task-decision: tab type');
 
       // 2) 注册 tab 内容
       ctx.slots.inject('sidebar.right.pane.tab', () => ctx.slots.register({
@@ -1085,7 +1085,7 @@ window.__ModuleLoader__.load({
       // 3) 页头常驻入口：tab 被关掉后还能从这里重新打开
       ctx.slots.inject('conversation.session.header.utilities', () => ctx.slots.register({
         name: 'conversation.session.header.utilities',
-        id: 'work-summary-gate-launcher',
+        id: 'task-decision-launcher',
         order: 59,
         locale: NS,
         inject: () => ({ t, open: openGateTab }),
@@ -1094,7 +1094,7 @@ window.__ModuleLoader__.load({
       // 4) 页头探针：解析本轮标记块
       ctx.slots.inject('conversation.session.header.utilities', () => ctx.slots.register({
         name: 'conversation.session.header.utilities',
-        id: 'work-summary-gate-probe',
+        id: 'task-decision-probe',
         order: 60,
         inject: () => ({ t, onGate: () => openGateTab() }),
       }, GateProbe));
