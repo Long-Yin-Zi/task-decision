@@ -26,21 +26,24 @@
 
 ## 安装
 
-> 前置：已安装 [DeepSeek Harness (dsh)](https://github.com/deepseek-ai/deepseek-harness) CLI，并使用 **web** profile（`dsh web`）。
+> 前置：已安装 [DeepSeek Harness (dsh)](https://github.com/deepseek-ai/deepseek-harness)。
+>
+> ⚠️ **适用面：仅桌面端 DSH 验证过。** 作者只用桌面端（内嵌 Web UI 的 DSH）开发与测试；
+> 浏览器里单独部署的 `dsh web` 没有验证过，能不能用目前未知。
 
-### 方式一：从 npm（推荐，会出现在 DSH 插件中心）
-
-```bash
-dsh plugin --profile web add task-decision
-```
-
-### 方式二：直接从 GitHub 源码安装
+### 从 GitHub 源码安装
 
 ```bash
-dsh plugin --profile web add github:Long-Yin-Zi/task-decision
+# profile 名换成你自己的（桌面端一般是 desktop）
+dsh plugin --profile desktop add github:Long-Yin-Zi/task-decision
 ```
 
-安装完成后**重启 `dsh web`**（宿主半部在启动时加载）。
+安装完成后**重启 DSH**（宿主半部在启动时加载）。
+
+> 关于 `package.json` 里的 `dsh.client.platform = "web"`：这是 DSH 客户端加载器的**硬性校验**（只接受字符串 `"web"`），
+> 桌面端也同样满足；它 **不代表**本插件“只支持网页端”，也不代表网页端可用。
+
+> 本插件**没有发布到 npm**（DSH 插件中心只收能用包名一行安装的包），所以只能走上面的 GitHub 源码安装。
 
 ---
 
@@ -130,12 +133,13 @@ q2（推进节奏）: 选 a「做完一项再汇报」
 
 | 项 | 说明 |
 |---|---|
-| DSH 目标版本 | 在 **0.2.1-rc.2（nightly）** 桌面端 + `dsh web` 上验证 |
-| profile | **web**（插件为 Web UI 专用：`package.json` 里声明了 `dsh.client.platform = "web"`） |
+| DSH 目标版本 | 在 **0.2.1-rc.2（nightly）桌面端**验证 |
+| 客户端载体 | **仅桌面端验证**；浏览器单独部署的 `dsh web` 未测试，是否可用未知 |
+| `dsh.client.platform` | 必须是 `"web"`：DSH 客户端加载器的硬性校验，桌面端同样满足（不代表网页端可用） |
 | 平台 | Windows / macOS / Linux（纯 JS，无原生依赖） |
 | 依赖 | 无第三方运行时依赖（`react` 由 DSH 宿主提供） |
 
-> ⚠️ 当前 **不支持仅桌面端（Electron 本地文档）** 的加载方式：那是 DSH 桌面端的界面载体差异，不是插件自身的选择。
+> ⚠️ 作者只在桌面端使用和测试；网页端（浏览器里单独跑的 `dsh web`）**未知**。在网页端遇到问题，不代表桌面端有问题。
 
 ---
 
