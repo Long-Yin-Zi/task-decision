@@ -79,7 +79,7 @@ window.__ModuleLoader__.load({
       overallLabel: '整体补充',
       // ⭐【0.6.0】附件相关
       attachAdd: '添加附件',
-      attachHint: '可直接 Ctrl+V 粘贴截图/文件，或拖进这一题',
+      attachHint: 'Ctrl+V 粘贴截图/文件，或点「添加附件」',
       attachBusy: '处理中…',
       attachFailed: '附件失败',
       attachRemove: '移除这个附件',
@@ -127,7 +127,7 @@ window.__ModuleLoader__.load({
       doneHint: 'A new gate will replace this',
       overallLabel: 'Overall note',
       attachAdd: 'Add attachment',
-      attachHint: 'Ctrl+V to paste a screenshot/file here, or drag one in',
+      attachHint: 'Ctrl+V to paste a screenshot/file, or click Add attachment',
       attachBusy: 'Working…',
       attachFailed: 'Attachment failed',
       attachRemove: 'Remove this attachment',
@@ -487,7 +487,7 @@ window.__ModuleLoader__.load({
       };
 
       // ==================================================================
-      //  ⭐【0.6.0】附件：每题独立的「粘贴 / 拖拽 / 选文件」区
+      //  ⭐【0.6.0】附件：每题独立的「粘贴 / 选文件」区（拖拽已在 0.6.1 去掉）
       //    图片 → 直接读成 base64，随消息内联发出（DSH 宿主会验格式并规范化保存）
       //    其他文件 → 立即后台上传到 DSH 的 fileUpload 服务，拿到 receiptId，提交时只引收据
       //    【为什么图片不也上传】DSH 的图片块就是内联 base64，没有收据一说；
@@ -641,21 +641,9 @@ window.__ModuleLoader__.load({
             h('span', { className: 'wg-attach-meta' }, fmtBytes(e.size)))));
       };
 
-      // ⭐【0.6.0】拖拽 / 粘贴：事件挂在题卡上，所以"拖进哪张卡就属于哪道题"
-      const handleDragOver = (ev) => {
-        const dt = ev.dataTransfer;
-        if (!dt) return;
-        const types = dt.types ? Array.from(dt.types) : [];
-        if (!types.includes('Files')) return;
-        ev.preventDefault();
-        dt.dropEffect = 'copy';
-      };
-      const handleDrop = (qid, ev) => {
-        const dt = ev.dataTransfer;
-        if (!dt || !dt.files || !dt.files.length) return;
-        ev.preventDefault();
-        addFiles(qid, dt.files);
-      };
+      // ⭐【0.6.1】只保留粘贴：拖拽已放弃（DSH 自己在 document 冒泡阶段接管了
+      //   dragenter/dragover/drop，全窗口弹遮罩、松手直接进聊天框；题卡拿不到事件）。
+      //   要恢复拖拽必须先解决“事件被全局遮罩抢走”的问题，否则只能误导用户。
       const handlePaste = (qid, ev) => {
         const cb = ev.clipboardData || (ev.nativeEvent && ev.nativeEvent.clipboardData);
         const files = filesFromClipboard(cb);
@@ -831,8 +819,6 @@ window.__ModuleLoader__.load({
                   key: q.id,
                   'data-answered': answered ? 'true' : 'false',
                   'data-invalid': bad ? 'true' : 'false',
-                  onDragOver: readonly ? undefined : handleDragOver,
-                  onDrop: readonly ? undefined : (ev) => handleDrop(q.id, ev),
                   onPaste: readonly ? undefined : (ev) => handlePaste(q.id, ev),
                 },
                   h('div', { className: 'wg-q-top' },
@@ -875,7 +861,7 @@ window.__ModuleLoader__.load({
                           value: qNotes[q.id] || '',
                           onChange: (e) => setQNote(q.id, e.target.value),
                         })),
-                      // ⭐【0.6.0】附件：点按钮选文件 / 直接 Ctrl+V 粘贴 / 拖进这张卡
+                      // ⭐【0.6.1】附件：点按钮选文件 / 在备注框里 Ctrl+V 粘贴
                       h('div', { className: 'wg-attach' },
                         h('div', { className: 'wg-attach-bar' },
                           h('button', {
