@@ -979,7 +979,7 @@ window.__ModuleLoader__.load({
             : h('div', { className: 'wg-status', 'data-tone': incomplete ? 'warn' : undefined },
               h('span', { className: 'wg-status-text' },
                 incomplete ? t.needPick
-                  : (phase === 'sending' ? t.sending : (total ? t.footHint : ''))),
+                  : (phase === 'sending' ? t.sending : (total ? t.footHint : '')))),
           // ⭐【0.6.3】提交与取消同一排各占一半：取消不再是难找的小灰字
           readonly ? null : h('div', { className: 'wg-actions' },
             h('button', {
