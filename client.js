@@ -995,6 +995,14 @@ window.__ModuleLoader__.load({
                 if (!cancelArmed) { setCancelArmed(true); return; }
                 setCancelArmed(false);
                 if (typeof cancel === 'function') cancel(sessionId);
+                // ⭐【0.6.5】取消后也把右侧栏收起来，和提交成功一致：
+                //   先留 250ms 让用户看到“已取消”的状态，再收栏；
+                //   收起失败只影响“自动收”，不影响取消本身。
+                if (typeof collapse === 'function') {
+                  setTimeout(() => {
+                    try { collapse(sessionId); } catch (e) { /* 忽略 */ }
+                  }, 250);
+                }
               },
             }, cancelArmed ? t.cancelConfirm : t.cancel))));
     }
